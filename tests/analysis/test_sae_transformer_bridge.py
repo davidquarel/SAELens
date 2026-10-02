@@ -16,6 +16,9 @@ if not has_transformer_bridge():
         allow_module_level=True,
     )
 
+from transformer_lens.config import TransformerBridgeConfig
+from transformer_lens.model_bridge import TransformerBridge
+
 from sae_lens.analysis.hooked_sae_transformer import (
     HookedSAETransformer,
     _SAEWrapper,
@@ -204,6 +207,31 @@ def test_boot_transformers_loads_model(bridge_model: SAETransformerBridge) -> No
     assert isinstance(bridge_model, SAETransformerBridge)
     assert hasattr(bridge_model, "_acts_to_saes")
     assert len(bridge_model._acts_to_saes) == 0
+
+
+@pytest.mark.skipif(
+    not hasattr(TransformerBridge, "boot_native"),
+    reason="TransformerBridge.boot_native requires a newer transformer-lens",
+)
+def test_boot_native_returns_sae_transformer_bridge() -> None:
+    cfg = TransformerBridgeConfig(
+        d_model=16,
+        d_head=4,
+        n_heads=4,
+        d_mlp=32,
+        n_layers=1,
+        n_ctx=8,
+        d_vocab=10,
+        act_fn="relu",
+    )
+    model = SAETransformerBridge.boot_native(cfg, device="cpu")
+    assert isinstance(model, SAETransformerBridge)
+    sae = make_sae(model.cfg.d_model, "blocks.0.hook_resid_pre")
+    _, cache = model.run_with_cache_with_saes(torch.tensor([[1, 2, 3]]), saes=[sae])
+    assert_close(
+        cache[model.get_sae_hook_name(sae)],
+        sae.encode(cache[model.get_sae_hook_name(sae, "hook_sae_input")]),
+    )
 
 
 def test_add_sae_changes_output(bridge_model: SAETransformerBridge) -> None:
